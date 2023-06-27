@@ -6,7 +6,6 @@ from dotenv import load_dotenv
 import boto3
 import json
 from bs4 import BeautifulSoup
-import aiohttp
 
 load_dotenv()
 
@@ -22,9 +21,6 @@ s3 = boto3.client(
 )
 # # Specify the S3 bucket and file name
 bucket_name = os.getenv("BUCKET_NAME")
-# file_name = 'page.json'
-# # Upload the JSON file to S3
-# s3.put_object(Body=json_data, Bucket=bucket_name, Key=file_name)
 
 
 async def scrape_products(link):
@@ -35,31 +31,26 @@ async def scrape_products(link):
     counter = 0
     limit_next_links = 3  # just get 3 pages for testing purposes
 
-    # Create an aiohttp session
-    async with aiohttp.ClientSession() as session:
-        # Continue scraping next pages if available and within the limit
-        while next_link and counter < limit_next_links:
-            # Find the link to the next page
-            async with session.get(next_link) as response:
-                next_soup = BeautifulSoup(await response.text(), "html.parser")
-                parse_product_list(next_soup)
-                # Find the next link in the html
-                next_link = find_next_link(next_soup)
+    # Continue scraping next pages if available and within the limit
+    while next_link and counter < limit_next_links:
+        # Find the link to the next page
+        next_response = requests.get(next_link)
+        next_soup = BeautifulSoup(next_response.content, "html.parser")
+        # Find the next link in the html
+        next_link = find_next_link(next_soup)
+        parse_product_list(counter + 1, next_soup)
 
-            # Increment the counter
-            counter += 1
+        # Increment the counter
+        counter += 1
 
 
-def scrape_product_page(product_link):
+def scrape_product_page(page, product_link):
     # Send a GET request to the product page
     product_response = requests.get(product_link)
     product_soup = BeautifulSoup(product_response.content, "html.parser")
 
     # Extract data from the product page
-    product_data = parse_product_page(product_soup)
-
-    # Process the extracted data as needed
-    process_data(product_data)
+    return parse_product_page(product_soup)
 
 
 def find_next_link(soup):
@@ -73,27 +64,22 @@ def find_next_link(soup):
     return None
 
 
-def parse_product_list(soup):
+def parse_product_list(page, soup):
     # Find the div elements containing the links to the products
     divs = soup.find_all("div", class_="result-table-row-txt")
 
+
+    products = []
     # Iterate over each div element
     for div in divs:
         # Find the link within the div with the text "View Details"
-        link_cell = div.find("a", text="View Details")
+        link_cell = div.find("a", string="View Details")
         if link_cell:
             product_link = link_cell["href"]
-            # print(product_link)
-
-            # # Follow the link to the product page
-            product_response = requests.get(product_link)
-            product_soup = BeautifulSoup(product_response.content, "html.parser")
-
-            # # Extract data from the product page
-            product_data = parse_product_page(product_soup)
-
-            # # Process the extracted data as needed
-            process_data(product_data)
+            print(product_link)
+            products.append(scrape_product_page(page, product_link))
+    # Process the extracted data as needed
+    process_data(page, products)
 
 
 # Process the product page and extract data
@@ -151,11 +137,11 @@ def parse_product_page(soup):
 
 
 # Process the extracted data
-def process_data(data):
-    # Implement your logic to process the extracted data
-    # such as saving to a file or database, printing, etc.
-    # print(json.dumps(data, indent=4))
-    pass
+def process_data(page, data):
+    file_name = f"page-{page}.json"
+    json_data = json.dumps(data, indent=4)
+    # # Upload the JSON file to S3
+    s3.put_object(Body=json_data, Bucket=bucket_name, Key=file_name)
 
 
 # Example usage
