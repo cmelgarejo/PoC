@@ -33,7 +33,7 @@ input_dataframe = input_dataframe.withColumn(
 )
 
 # Define the output directory for CSV files
-output_directory = "s3://verusen-poc/csv/"
+output_directory = "s3://verusen-poc/"
 
 # Transform and write each input DataFrame to CSV
 input_files = input_dataframe.select("file_name").distinct().collect()
@@ -41,7 +41,7 @@ for row in input_files:
     file_name = row["file_name"]
     output_path = os.path.join(
         output_directory,
-        os.path.splitext(file_name)[0] + ".csv",
+        os.path.splitext(file_name)[1] + ".csv",
     )
     input_dataframe.filter(input_dataframe.file_name == file_name).coalesce(
         1
@@ -61,7 +61,9 @@ input_dataframe.write.jdbc(
     table=input_dataframe["folder_name"] + "." + input_dataframe["file_name"],
     mode="append",
     properties=postgres_properties,
-    createTableColumnTypes={"CAS #": "TEXT PRIMARY KEY"},
+    options={
+        "createTableColumnTypes": {"CAS #": "TEXT PRIMARY KEY"},
+    },
 )
 
 # Extract the INDUSTRY, CLASS, and FUNCTIONS columns
