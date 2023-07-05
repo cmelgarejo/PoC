@@ -83,5 +83,7 @@ for column in columns_to_extract:
         table=full_table_name,
         mode="append",
         properties=postgres_properties,
-        createTableColumnTypes={"id": "BIGINT PRIMARY KEY", column: "TEXT"},
+        options={
+            "createTableColumnTypes": "id BIGSERIAL PRIMARY KEY, " + column + " TEXT"
+        },
     )
