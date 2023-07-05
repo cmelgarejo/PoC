@@ -143,7 +143,7 @@ def parse_product_page(soup):
 
 # Process the extracted data
 def process_data(page, data):
-    file_name = f"page-{page}.json"
+    file_name = f"parchem/page-{page}.json"
     json_data = json.dumps(data, indent=4)
     # Upload the JSON file to S3
     s3.put_object(Body=json_data, Bucket=bucket_name, Key=file_name)

@@ -41,7 +41,6 @@ for row in input_files:
     file_name = row["file_name"]
     output_path = os.path.join(
         output_directory,
-        row["folder_name"] + "/",
         os.path.splitext(file_name)[0] + ".csv",
     )
     input_dataframe.filter(input_dataframe.file_name == file_name).coalesce(
