@@ -1,5 +1,5 @@
 import asyncio
-import requests
+import aiohttp
 import re
 import os
 from dotenv import load_dotenv
@@ -19,35 +19,37 @@ s3 = boto3.client(
     aws_secret_access_key=aws_secret_access_key,
     region_name=aws_region,
 )
-# # Specify the S3 bucket and file name
+
+# Specify the S3 bucket and file name
 bucket_name = os.getenv("BUCKET_NAME")
 
 
 async def scrape_products(link):
-    # Start the loop
-    next_link = link
+    async with aiohttp.ClientSession() as session:
+        # Start the loop
+        next_link = link
 
-    # Set the counter variable and limit
-    counter = 0
-    limit_next_links = 3  # just get 3 pages for testing purposes
+        # Set the counter variable and limit
+        counter = 0
+        limit_next_links = 3  # just get 3 pages for testing purposes
 
-    # Continue scraping next pages if available and within the limit
-    while next_link and counter < limit_next_links:
-        # Find the link to the next page
-        next_response = requests.get(next_link)
-        next_soup = BeautifulSoup(next_response.content, "html.parser")
-        # Find the next link in the html
-        next_link = find_next_link(next_soup)
-        parse_product_list(counter + 1, next_soup)
+        # Continue scraping next pages if available and within the limit
+        while next_link and counter < limit_next_links:
+            # Find the link to the next page
+            async with session.get(next_link) as response:
+                next_soup = BeautifulSoup(await response.text(), "html.parser")
+                # Find the next link in the html
+                next_link = find_next_link(next_soup)
+                await parse_product_list(counter + 1, next_soup, session)
 
-        # Increment the counter
-        counter += 1
+            # Increment the counter
+            counter += 1
 
 
-def scrape_product_page(page, product_link):
+async def scrape_product_page(page, product_link, session):
     # Send a GET request to the product page
-    product_response = requests.get(product_link)
-    product_soup = BeautifulSoup(product_response.content, "html.parser")
+    async with session.get(product_link) as response:
+        product_soup = BeautifulSoup(await response.text(), "html.parser")
 
     # Extract data from the product page
     return parse_product_page(product_soup)
@@ -64,12 +66,11 @@ def find_next_link(soup):
     return None
 
 
-def parse_product_list(page, soup):
+async def parse_product_list(page, soup, session):
     # Find the div elements containing the links to the products
     divs = soup.find_all("div", class_="result-table-row-txt")
 
-
-    products = []
+    tasks = []
     # Iterate over each div element
     for div in divs:
         # Find the link within the div with the text "View Details"
@@ -77,9 +78,13 @@ def parse_product_list(page, soup):
         if link_cell:
             product_link = link_cell["href"]
             print(product_link)
-            products.append(scrape_product_page(page, product_link))
+            tasks.append(scrape_product_page(page, product_link, session))
+
+    # Wait for all tasks to complete
+    product_data_list = await asyncio.gather(*tasks)
+
     # Process the extracted data as needed
-    process_data(page, products)
+    process_data(page, product_data_list)
 
 
 # Process the product page and extract data
@@ -140,14 +145,11 @@ def parse_product_page(soup):
 def process_data(page, data):
     file_name = f"page-{page}.json"
     json_data = json.dumps(data, indent=4)
-    # # Upload the JSON file to S3
+    # Upload the JSON file to S3
     s3.put_object(Body=json_data, Bucket=bucket_name, Key=file_name)
 
 
 # Example usage
-link_to_table = (
-    "https://www.parchem.com/raw-material-chemicals-supplier-distributor.aspx"
-)
-# scrape_products(link_to_table)
+link_to_table = "https://www.parchem.com/raw-material-chemicals-supplier-distributor.aspx"
 loop = asyncio.get_event_loop()
 loop.run_until_complete(scrape_products(link_to_table))
